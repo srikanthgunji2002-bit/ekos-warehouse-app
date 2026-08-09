@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-slate-800">Dashboard Overview</h1>
+        <div class="flex space-x-2 items-center">
+            <a href="/api/export/daily-stock" class="bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-emerald-700">📊 Export Daily Stock (Excel)</a>
+            <span id="roleBadge" class="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded font-bold uppercase"></span>
+        </div>
+    </div>
+
+    <!-- Admin Interconnected Clickable Metric Cards -->
+    <div id="adminCards" class="hidden grid grid-cols-1 md:grid-cols-4 gap-6">
+        <a href="/invoices" class="bg-white p-6 rounded-lg shadow border-l-4 border-emerald-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Total Sales Revenue ↗</p>
+            <p id="statRev" class="text-3xl font-bold text-slate-800">₹0.00</p>
+        </a>
+        <a href="/invoices" class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Payments Collected ↗</p>
+            <p id="statRec" class="text-3xl font-bold text-slate-800">₹0.00</p>
+        </a>
+        <a href="/invoices" class="bg-white p-6 rounded-lg shadow border-l-4 border-red-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Pending Receivables ↗</p>
+            <p id="statPend" class="text-3xl font-bold text-slate-800">₹0.00</p>
+        </a>
+        <a href="/inventory" class="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Low Stock Alerts ↗</p>
+            <p id="statStock" class="text-3xl font-bold text-slate-800">0 Items</p>
+        </a>
+    </div>
+
+    <!-- Employee Stock Metrics -->
+    <div id="empCards" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+        <a href="/inventory" class="bg-white p-6 rounded-lg shadow border-l-4 border-indigo-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Total Products Managed ↗</p>
+            <p id="statEmpTotal" class="text-3xl font-bold text-slate-800">0</p>
+        </a>
+        <a href="/inventory" class="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500 hover:shadow-lg transition cursor-pointer">
+            <p class="text-xs uppercase font-semibold text-slate-400">Low Stock Items ↗</p>
+            <p id="statEmpLow" class="text-3xl font-bold text-slate-800">0</p>
+        </a>
+        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-emerald-500">
+            <p class="text-xs uppercase font-semibold text-slate-400">Today's Stock Outflow</p>
+            <p id="statEmpOut" class="text-3xl font-bold text-slate-800">0 NOS</p>
+        </div>
+    </div>
+
+    <!-- Daywise Daily Stock Table (Clickable Rows Redirect to Stock Page) -->
+    <div class="bg-white p-6 rounded-lg shadow">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-slate-700">Today's Stock Movement Snapshot</h2>
+            <span class="text-xs text-slate-400">Click any product row to manage stock</span>
+        </div>
+        
+        <table class="w-full text-left border-collapse text-sm">
+            <thead>
+                <tr class="border-b bg-slate-50 text-slate-600">
+                    <th class="p-2">SKU</th>
+                    <th class="p-2">Product Name</th>
+                    <th class="p-2">Current Remaining Stock</th>
+                    <th class="p-2">Quantity Out Today</th>
+                </tr>
+            </thead>
+            <tbody id="dailyStockTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function loadDashboardData() {
+        const role = localStorage.getItem('ekos_role') || 'employee';
+        document.getElementById('roleBadge').innerText = `${role} Dashboard`;
+
+        if (role === 'admin') {
+            document.getElementById('adminCards').classList.remove('hidden');
+            const res = await fetch('/api/analytics');
+            const d = await res.json();
+            document.getElementById('statRev').innerText = `₹${d.total_revenue.toFixed(2)}`;
+            document.getElementById('statRec').innerText = `₹${d.total_received.toFixed(2)}`;
+            document.getElementById('statPend').innerText = `₹${d.pending_bills.toFixed(2)}`;
+            document.getElementById('statStock').innerText = `${d.low_stock_count} Items`;
+        } else {
+            document.getElementById('empCards').classList.remove('hidden');
+            const res = await fetch('/api/analytics');
+            const d = await res.json();
+            document.getElementById('statEmpTotal').innerText = d.total_products;
+            document.getElementById('statEmpLow').innerText = d.low_stock_count;
+        }
+
+        const logRes = await fetch('/api/analytics/daily-stock');
+        const logs = await logRes.json();
+        
+        let totalOut = 0;
+        document.getElementById('dailyStockTable').innerHTML = logs.map(l => {
+            totalOut += l.out_today;
+            return `
+                <tr onclick="window.location.href='/inventory'" class="border-b hover:bg-slate-50 cursor-pointer">
+                    <td class="p-2 font-mono text-xs">${l.sku}</td>
+                    <td class="p-2 font-medium text-blue-600 hover:underline">${l.product_name} ↗</td>
+                    <td class="p-2 font-bold text-slate-800">${l.current_stock} NOS</td>
+                    <td class="p-2 text-emerald-600 font-semibold">${l.out_today} NOS</td>
+                </tr>
+            `;
+        }).join('');
+
+        if (role === 'employee') {
+            document.getElementById('statEmpOut').innerText = `${totalOut} NOS`;
+        }
+    }
+
+    loadDashboardData();
+</script>
+{% endblock %}

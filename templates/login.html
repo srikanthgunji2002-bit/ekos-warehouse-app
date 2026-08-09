@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EKOS ERP - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-md max-w-md w-full space-y-6">
+        <div class="text-center">
+            <h1 class="text-2xl font-bold text-slate-800">EKOS ERP Login</h1>
+            <p class="text-xs text-slate-400 mt-1">Sign in with Admin or Employee credentials</p>
+        </div>
+
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Username</label>
+                <input type="text" id="user" placeholder="admin or employee" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+                <input type="password" id="pass" placeholder="••••••••" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white p-2.5 rounded text-sm font-semibold hover:bg-blue-700">Sign In</button>
+        </form>
+
+        <div class="bg-slate-50 p-3 rounded text-xs text-slate-500 space-y-1 border">
+            <p><strong>Default Admin:</strong> admin / adminpassword</p>
+            <p><strong>Default Employee:</strong> employee / employeepassword</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: document.getElementById('user').value,
+                    password: document.getElementById('pass').value
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                localStorage.setItem('ekos_role', data.role);
+                localStorage.setItem('ekos_user', data.username);
+                window.location.href = data.role === 'employee' ? '/inventory' : '/';
+            } else {
+                alert('Invalid Username or Password');
+            }
+        };
+    </script>
+</body>
+</html>

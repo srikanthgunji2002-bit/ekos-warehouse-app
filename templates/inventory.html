@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h1 class="text-2xl font-bold text-slate-800">Stock Directory & Product Partitions</h1>
+        
+        <div class="flex flex-wrap items-center gap-2 bg-white p-2 rounded shadow border">
+            <span class="text-xs font-bold text-slate-600">📅 Filter Logs:</span>
+            <select id="dateFilterSelect" onchange="applyLogFilter()" class="border p-1.5 text-xs rounded bg-slate-50 font-semibold">
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="year">This Year</option>
+                <option value="custom">Custom Date</option>
+            </select>
+
+            <input type="date" id="customDatePicker" onchange="applyLogFilter()" class="hidden border p-1 text-xs rounded" />
+
+            <a href="/api/export/products" class="bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-emerald-700 ml-2">📊 Export Stock Excel</a>
+        </div>
+    </div>
+
+    <div id="productPartitionsContainer" class="space-y-6"></div>
+</div>
+
+<!-- Modal: Edit Product (Cumulative Stock Addition) -->
+<div id="editProdModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+        <h3 class="text-lg font-bold mb-2 text-slate-800">✏️ Add Stock Quantity (Cumulative)</h3>
+        <p class="text-xs text-slate-500 mb-4">The quantity entered here will be added directly to previous stock.</p>
+        
+        <form id="editProdForm" class="space-y-3">
+            <input type="hidden" id="editProdId" />
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">SKU Code</label>
+                <input type="text" id="editSku" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Product Name</label>
+                <input type="text" id="editName" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">HSN Code</label>
+                <input type="text" id="editHsn" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1 font-bold text-indigo-700">Add Quantity To Current Stock (+)</label>
+                <input type="number" id="addQtyInput" placeholder="e.g. 50" class="w-full border-2 border-indigo-500 p-2 text-sm rounded font-bold" required />
+            </div>
+            <div class="flex justify-end space-x-2 pt-3">
+                <button type="button" onclick="closeModal('editProdModal')" class="px-4 py-2 text-sm border rounded">Cancel</button>
+                <button type="submit" class="px-4 py-2 text-sm bg-emerald-600 text-white rounded font-bold">+ Add Stock</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let productsList = [];
+    let allLogs = [];
+
+    async function loadData() {
+        const pRes = await fetch('/api/products');
+        productsList = await pRes.json();
+
+        const lRes = await fetch('/api/products/update-logs');
+        allLogs = await lRes.json();
+
+        renderPartitions();
+    }
+
+    function applyLogFilter() {
+        const filterVal = document.getElementById('dateFilterSelect').value;
+        const picker = document.getElementById('customDatePicker');
+        
+        if (filterVal === 'custom') {
+            picker.classList.remove('hidden');
+        } else {
+            picker.classList.add('hidden');
+        }
+        renderPartitions();
+    }
+
+    function filterLogsByDate(logs) {
+        const filterVal = document.getElementById('dateFilterSelect').value;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        if (filterVal === 'today') {
+            return logs.filter(l => l.date === todayStr);
+        } else if (filterVal === 'week') {
+            const now = new Date();
+            const weekAgo = new Date(now.setDate(now.getDate() - 7));
+            return logs.filter(l => new Date(l.date) >= weekAgo);
+        } else if (filterVal === 'month') {
+            const now = new Date();
+            const monthAgo = new Date(now.setMonth(now.getMonth() - 1));
+            return logs.filter(l => new Date(l.date) >= monthAgo);
+        } else if (filterVal === 'year') {
+            const now = new Date();
+            const yearAgo = new Date(now.setFullYear(now.getFullYear() - 1));
+            return logs.filter(l => new Date(l.date) >= yearAgo);
+        } else if (filterVal === 'custom') {
+            const customDate = document.getElementById('customDatePicker').value;
+            if (!customDate) return logs;
+            return logs.filter(l => l.date === customDate);
+        }
+        return logs;
+    }
+
+    function renderPartitions() {
+        const container = document.getElementById('productPartitionsContainer');
+        const filteredLogs = filterLogsByDate(allLogs);
+
+        if (productsList.length === 0) {
+            container.innerHTML = `<div class="bg-white p-8 rounded text-center text-slate-400">No products registered yet.</div>`;
+            return;
+        }
+
+        container.innerHTML = productsList.map(p => {
+            const pLogs = filteredLogs.filter(l => l.product_id === p.id);
+
+            return `
+                <div class="bg-white rounded-lg shadow border border-slate-200 overflow-hidden">
+                    <div class="bg-slate-900 text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                        <div>
+                            <div class="flex items-center space-x-3">
+                                <h2 class="text-xl font-bold text-amber-400">${p.name}</h2>
+                                <span class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-xs font-mono text-slate-300">SKU: ${p.sku}</span>
+                                <span class="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-xs font-mono text-slate-300">HSN: ${p.hsn_code}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <div class="text-right">
+                                <p class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall Stock Count</p>
+                                <p class="text-2xl font-black text-emerald-400">${p.stock_qty} NOS</p>
+                            </div>
+                            <button onclick="openEditModal(${p.id})" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-1.5 rounded text-xs flex items-center space-x-1">
+                                <span>✏️</span><span>Update Stock</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="p-4 space-y-2">
+                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Stock Log History (${pLogs.length} Records)</p>
+                        
+                        <div class="max-h-48 overflow-y-auto border rounded">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead class="sticky top-0 bg-slate-100 text-slate-600 shadow-xs">
+                                    <tr>
+                                        <th class="p-2">Timestamp</th>
+                                        <th class="p-2">Updated By</th>
+                                        <th class="p-2">Action</th>
+                                        <th class="p-2">Qty Added/Removed</th>
+                                        <th class="p-2">New Total Remaining</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${pLogs.length === 0 ? `<tr><td colspan="5" class="p-3 text-slate-400 text-center">No logs found for this date range.</td></tr>` : 
+                                    pLogs.map(l => `
+                                        <tr class="border-b hover:bg-slate-50">
+                                            <td class="p-2 font-mono text-slate-500">${l.timestamp}</td>
+                                            <td class="p-2 font-bold text-slate-800">${l.updated_by}</td>
+                                            <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${l.change_type === 'IN' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${l.change_type}</span></td>
+                                            <td class="p-2 font-bold ${l.qty_changed >= 0 ? 'text-emerald-600' : 'text-red-600'}">${l.qty_changed >= 0 ? '+' : ''}${l.qty_changed}</td>
+                                            <td class="p-2 font-bold text-slate-900">${l.new_total_qty} NOS</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            `;
+        }).join('');
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function openEditModal(id) {
+        const p = productsList.find(x => x.id === id);
+        if (!p) return;
+
+        document.getElementById('editProdId').value = p.id;
+        document.getElementById('editSku').value = p.sku;
+        document.getElementById('editName').value = p.name;
+        document.getElementById('editHsn').value = p.hsn_code;
+        document.getElementById('addQtyInput').value = '';
+
+        openModal('editProdModal');
+    }
+
+    document.getElementById('editProdForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const id = parseInt(document.getElementById('editProdId').value);
+        const addQty = parseInt(document.getElementById('addQtyInput').value);
+        const currentUser = localStorage.getItem('ekos_user') || 'Employee';
+
+        await fetch(`/api/products/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                sku: document.getElementById('editSku').value,
+                name: document.getElementById('editName').value,
+                hsn_code: document.getElementById('editHsn').value,
+                add_qty: addQty,
+                updated_by: currentUser
+            })
+        });
+
+        closeModal('editProdModal');
+        loadData();
+    };
+
+    loadData();
+</script>
+{% endblock %}

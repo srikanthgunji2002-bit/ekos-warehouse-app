@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-slate-800">Customer Directory & Management</h1>
+        <a href="/api/export/customers" class="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-emerald-700">📊 Export Customers Excel</a>
+    </div>
+
+    <!-- Customer Registration Form -->
+    <div class="bg-white p-6 rounded-lg shadow max-w-xl">
+        <h2 class="text-lg font-bold mb-4 text-slate-700">Register New Customer</h2>
+        <form id="custForm" class="space-y-3">
+            <input type="text" id="cName" placeholder="Full Company / Customer Name" class="w-full border p-2 text-sm rounded" required />
+            <input type="text" id="cPhone" placeholder="Phone Number" class="w-full border p-2 text-sm rounded" required />
+            <input type="text" id="cGstin" placeholder="GSTIN (e.g. 36AAAAA0000A1Z5)" class="w-full border p-2 text-sm rounded" />
+            <input type="email" id="cEmail" placeholder="Email Address" class="w-full border p-2 text-sm rounded" required />
+            <input type="text" id="cAddr" placeholder="Full Billing Address" class="w-full border p-2 text-sm rounded" required />
+            <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-medium hover:bg-blue-700">Save Customer Record</button>
+        </form>
+    </div>
+
+    <!-- Customer Table -->
+    <div class="bg-white p-6 rounded-lg shadow">
+        <h2 class="text-lg font-bold mb-4 text-slate-700">Saved Customers</h2>
+        <table class="w-full text-left border-collapse text-sm">
+            <thead>
+                <tr class="border-b bg-slate-50 text-slate-600">
+                    <th class="p-2">ID</th>
+                    <th class="p-2">Name</th>
+                    <th class="p-2">Phone</th>
+                    <th class="p-2">GSTIN</th>
+                    <th class="p-2">Email</th>
+                    <th class="p-2">Address</th>
+                </tr>
+            </thead>
+            <tbody id="custTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function loadCustomers() {
+        const res = await fetch('/api/customers');
+        const custs = await res.json();
+        document.getElementById('custTable').innerHTML = custs.map(c => `
+            <tr class="border-b hover:bg-slate-50">
+                <td class="p-2">${c.id}</td>
+                <td class="p-2 font-medium">${c.name}</td>
+                <td class="p-2">${c.phone}</td>
+                <td class="p-2 font-mono text-xs">${c.gstin || 'N/A'}</td>
+                <td class="p-2">${c.email}</td>
+                <td class="p-2">${c.address}</td>
+            </tr>
+        `).join('');
+    }
+
+    document.getElementById('custForm').onsubmit = async (e) => {
+        e.preventDefault();
+        await fetch('/api/customers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: document.getElementById('cName').value,
+                phone: document.getElementById('cPhone').value,
+                gstin: document.getElementById('cGstin').value,
+                email: document.getElementById('cEmail').value,
+                address: document.getElementById('cAddr').value
+            })
+        });
+        e.target.reset();
+        loadCustomers();
+    };
+
+    loadCustomers();
+</script>
+{% endblock %}

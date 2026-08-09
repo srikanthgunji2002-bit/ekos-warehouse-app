@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-slate-800">Invoices & Billing</h1>
+        <a href="/api/export/invoices" class="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-emerald-700">📊 Export Invoices Excel</a>
+    </div>
+
+    <!-- Invoice Generation Form -->
+    <div class="bg-white p-6 rounded-lg shadow max-w-3xl space-y-4">
+        <h2 class="text-lg font-bold text-slate-700 border-b pb-2">Generate Tax Invoice</h2>
+        
+        <form id="invForm" class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Select Customer</label>
+                <select id="selCust" class="w-full border p-2 text-sm rounded" required></select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Select Product</label>
+                <select id="selProd" class="w-full border p-2 text-sm rounded" required></select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Quantity</label>
+                <input type="number" id="saleQty" placeholder="e.g. 50" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Unit Price</label>
+                <input type="number" step="0.01" id="unitPrice" placeholder="Price per unit" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Currency</label>
+                <select id="currency" class="w-full border p-2 text-sm rounded" required>
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Include GST?</label>
+                <select id="includeGst" class="w-full border p-2 text-sm rounded" required>
+                    <option value="true">Yes (18% GST)</option>
+                    <option value="false">No GST</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Order Date</label>
+                <input type="date" id="orderDate" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Delivery Date</label>
+                <input type="date" id="deliveryDate" class="w-full border p-2 text-sm rounded" required />
+            </div>
+            <div class="col-span-2">
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Amount Paid Now</label>
+                <input type="number" step="0.01" id="paidAmt" placeholder="0.00" class="w-full border p-2 text-sm rounded" required />
+            </div>
+
+            <!-- Admin Custom Dynamic Metadata Fields -->
+            <div class="col-span-2 border-t pt-3">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-slate-700">➕ Admin Custom Sections / Extra Fields</label>
+                    <button type="button" onclick="addCustomFieldRow()" class="text-xs text-blue-600 font-semibold hover:underline">+ Add Section</button>
+                </div>
+                <div id="customFieldsContainer" class="space-y-2"></div>
+            </div>
+
+            <button type="button" onclick="renderVisualPreview()" class="col-span-1 bg-slate-800 text-white p-2 rounded text-sm font-medium hover:bg-slate-700">Visual Invoice Preview</button>
+            <button type="submit" class="col-span-1 bg-emerald-600 text-white p-2 rounded text-sm font-medium hover:bg-emerald-700">Confirm & Save PDF</button>
+        </form>
+    </div>
+
+    <!-- Stored Invoices & History Directory -->
+    <div class="bg-white p-6 rounded-lg shadow space-y-3">
+        <h2 class="text-lg font-bold text-slate-800">📁 Stored Invoices History Archive</h2>
+        
+        <table class="w-full text-left border-collapse text-xs">
+            <thead>
+                <tr class="border-b bg-slate-100 text-slate-700">
+                    <th class="p-2.5">Invoice ID</th>
+                    <th class="p-2.5">Customer Name</th>
+                    <th class="p-2.5">Order Date</th>
+                    <th class="p-2.5">Delivery Date</th>
+                    <th class="p-2.5">Total Amount</th>
+                    <th class="p-2.5">Paid Amount</th>
+                    <th class="p-2.5">Status</th>
+                    <th class="p-2.5 text-right">PDF Action</th>
+                </tr>
+            </thead>
+            <tbody id="invoicesHistoryTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: Exact PDF-Style Visual Document Preview -->
+<div id="visualPreviewModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white p-8 rounded shadow-2xl max-w-2xl w-full border border-slate-300 font-sans space-y-4 max-h-[90vh] overflow-y-auto">
+        
+        <div class="flex justify-between items-start border-b pb-4">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">EKOS SUSTAINABLE PACKAGING</h1>
+                <p class="text-xs text-slate-500">Kammuguda, Turkayamjal, Hyderabad, Telangana</p>
+                <p class="text-xs text-slate-500">Ph: 9704242247 | Web: www.ekosindia.com</p>
+            </div>
+            <span class="text-lg font-bold border-2 border-slate-800 px-3 py-1">TAX INVOICE</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 text-xs border-b pb-4">
+            <div>
+                <p class="font-bold text-slate-700 mb-1">Customer Details:</p>
+                <p id="prevCustName" class="font-semibold"></p>
+                <p id="prevCustAddr"></p>
+                <p id="prevCustPhone"></p>
+                <p id="prevCustGst" class="text-slate-500"></p>
+            </div>
+            <div class="border-l pl-4 space-y-1">
+                <p><strong>Invoice No:</strong> EKOS-PREVIEW</p>
+                <p><strong>Order Date:</strong> <span id="prevOrderDate"></span></p>
+                <p><strong>Delivery Date:</strong> <span id="prevDelDate"></span></p>
+                <div id="prevCustomList" class="pt-2 text-slate-600"></div>
+            </div>
+        </div>
+
+        <table class="w-full text-left border-collapse text-xs">
+            <thead>
+                <tr class="border-b bg-slate-100">
+                    <th class="p-2">Item</th>
+                    <th class="p-2">HSN</th>
+                    <th class="p-2">Qty</th>
+                    <th class="p-2">Rate</th>
+                    <th class="p-2 text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b">
+                    <td id="prevProdName" class="p-2 font-medium"></td>
+                    <td id="prevProdHsn" class="p-2"></td>
+                    <td id="prevProdQty" class="p-2"></td>
+                    <td id="prevProdRate" class="p-2"></td>
+                    <td id="prevProdTotal" class="p-2 text-right font-bold"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="flex justify-end pt-2 text-xs">
+            <div class="w-1/2 space-y-1 text-right">
+                <p>Subtotal: <span id="prevSubtotal" class="font-bold"></span></p>
+                <p>GST (18%): <span id="prevTax" class="font-bold"></span></p>
+                <p class="text-sm font-bold border-t pt-1">Grand Total: <span id="prevGrandTotal" class="text-emerald-700"></span></p>
+                <p>Paid Amount: <span id="prevPaid" class="font-bold"></span></p>
+            </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-4 border-t">
+            <button type="button" onclick="closeModal('visualPreviewModal')" class="px-4 py-2 text-xs border rounded">Edit Invoice</button>
+            <button type="button" onclick="commitInvoice()" class="px-4 py-2 text-xs bg-emerald-600 text-white rounded font-bold">Confirm & Print PDF</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let customersList = [];
+    let productsList = [];
+
+    async function init() {
+        const cRes = await fetch('/api/customers');
+        customersList = await cRes.json();
+        document.getElementById('selCust').innerHTML = '<option value="">Select Customer</option>' + customersList.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+        const pRes = await fetch('/api/products');
+        productsList = await pRes.json();
+        document.getElementById('selProd').innerHTML = '<option value="">Select Product</option>' + productsList.map(p => `<option value="${p.id}">${p.name} (Stock: ${p.stock_qty})</option>`).join('');
+
+        loadInvoiceHistory();
+    }
+
+    async function loadInvoiceHistory() {
+        const res = await fetch('/api/invoices');
+        const invoices = await res.json();
+
+        document.getElementById('invoicesHistoryTable').innerHTML = invoices.map(inv => {
+            const sym = inv.currency === 'INR' ? '₹' : '$';
+            return `
+                <tr class="border-b hover:bg-slate-50">
+                    <td class="p-2.5 font-bold font-mono text-slate-800">EKOS-${inv.id.toString().padStart(4, '0')}</td>
+                    <td class="p-2.5 font-medium">${inv.customer_name}</td>
+                    <td class="p-2.5 text-slate-500">${inv.order_date}</td>
+                    <td class="p-2.5 text-slate-500">${inv.delivery_date}</td>
+                    <td class="p-2.5 font-bold text-slate-900">${sym}${inv.total_amount.toFixed(2)}</td>
+                    <td class="p-2.5 font-semibold text-emerald-600">${sym}${inv.paid_amount.toFixed(2)}</td>
+                    <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${inv.status.toUpperCase()}</span></td>
+                    <td class="p-2.5 text-right">
+                        <a href="/api/invoices/${inv.id}/pdf" target="_blank" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-semibold hover:bg-indigo-100">📄 Download PDF</a>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function addCustomFieldRow() {
+        const div = document.createElement('div');
+        div.className = "flex space-x-2 items-center";
+        div.innerHTML = `
+            <input type="text" placeholder="Section Name (e.g. PO Ref)" class="w-1/2 border p-1.5 text-xs rounded custom-key" />
+            <input type="text" placeholder="Value (e.g. PO-99201)" class="w-1/2 border p-1.5 text-xs rounded custom-val" />
+            <button type="button" onclick="this.parentElement.remove()" class="text-red-600 font-bold px-2">✕</button>
+        `;
+        document.getElementById('customFieldsContainer').appendChild(div);
+    }
+
+    function getCustomSectionsPayload() {
+        const keys = document.querySelectorAll('.custom-key');
+        const vals = document.querySelectorAll('.custom-val');
+        const customObj = {};
+        keys.forEach((k, idx) => {
+            if (k.value.trim() !== '') {
+                customObj[k.value.trim()] = vals[idx].value.trim();
+            }
+        });
+        return customObj;
+    }
+
+    function getPayload() {
+        return {
+            customer_id: parseInt(document.getElementById('selCust').value),
+            product_id: parseInt(document.getElementById('selProd').value),
+            quantity: parseInt(document.getElementById('saleQty').value),
+            unit_price: parseFloat(document.getElementById('unitPrice').value),
+            include_gst: document.getElementById('includeGst').value === "true",
+            currency: document.getElementById('currency').value,
+            order_date: document.getElementById('orderDate').value,
+            delivery_date: document.getElementById('deliveryDate').value,
+            tax_rate: 18.0,
+            paid_amount: parseFloat(document.getElementById('paidAmt').value) || 0.0,
+            custom_sections: getCustomSectionsPayload()
+        };
+    }
+
+    function renderVisualPreview() {
+        const p = getPayload();
+        const c = customersList.find(x => x.id === p.customer_id);
+        const prod = productsList.find(x => x.id === p.product_id);
+
+        if (!c || !prod || isNaN(p.quantity) || isNaN(p.unit_price)) {
+            alert("Please fill in all customer, product, quantity, and unit price fields.");
+            return;
+        }
+
+        const sym = p.currency === 'INR' ? '₹' : '$';
+        const subtotal = p.quantity * p.unit_price;
+        const tax = p.include_gst ? subtotal * 0.18 : 0.0;
+        const total = subtotal + tax;
+
+        document.getElementById('prevCustName').innerText = c.name;
+        document.getElementById('prevCustAddr').innerText = c.address;
+        document.getElementById('prevCustPhone').innerText = `Ph: ${c.phone}`;
+        document.getElementById('prevCustGst').innerText = p.include_gst ? `GSTIN: ${c.gstin || 'N/A'}` : 'GST Excluded';
+
+        document.getElementById('prevOrderDate').innerText = p.order_date || 'N/A';
+        document.getElementById('prevDelDate').innerText = p.delivery_date || 'N/A';
+
+        const customContainer = document.getElementById('prevCustomList');
+        customContainer.innerHTML = Object.entries(p.custom_sections).map(([k, v]) => `<p><strong>${k}:</strong> ${v}</p>`).join('');
+
+        document.getElementById('prevProdName').innerText = prod.name;
+        document.getElementById('prevProdHsn').innerText = prod.hsn_code;
+        document.getElementById('prevProdQty').innerText = `${p.quantity} NOS`;
+        document.getElementById('prevProdRate').innerText = `${sym}${p.unit_price.toFixed(2)}`;
+        document.getElementById('prevProdTotal').innerText = `${sym}${subtotal.toFixed(2)}`;
+
+        document.getElementById('prevSubtotal').innerText = `${sym}${subtotal.toFixed(2)}`;
+        document.getElementById('prevTax').innerText = `${sym}${tax.toFixed(2)}`;
+        document.getElementById('prevGrandTotal').innerText = `${sym}${total.toFixed(2)}`;
+        document.getElementById('prevPaid').innerText = `${sym}${p.paid_amount.toFixed(2)}`;
+
+        document.getElementById('visualPreviewModal').classList.remove('hidden');
+    }
+
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    async function commitInvoice() {
+        closeModal('visualPreviewModal');
+        const res = await fetch('/api/invoices', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(getPayload())
+        });
+
+        if(!res.ok) {
+            alert((await res.json()).detail);
+        } else {
+            const data = await res.json();
+            window.open(`/api/invoices/${data.invoice_id}/pdf`, '_blank');
+            document.getElementById('invForm').reset();
+            document.getElementById('customFieldsContainer').innerHTML = '';
+            init();
+        }
+    }
+
+    document.getElementById('invForm').onsubmit = (e) => {
+        e.preventDefault();
+        commitInvoice();
+    };
+
+    init();
+</script>
+{% endblock %}
