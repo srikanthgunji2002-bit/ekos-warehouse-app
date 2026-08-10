@@ -63,7 +63,7 @@ class ProductStockAdd(BaseModel):
 class OrderCreate(BaseModel):
     order_number: str
     customer_name: str
-    customer_phone: Optional[str] = ""  # Added Phone Field
+    customer_phone: Optional[str] = ""
     product_details: str
     quantity: int
     order_date: str
@@ -153,7 +153,7 @@ def update_admin_credentials(req: AdminCredsUpdate, s: Session = Depends(get_db)
     s.commit()
     return {"message": "Admin credentials verified & updated successfully."}
 
-# HTML Page Routes
+# Page Routes
 @app.get("/", response_class=HTMLResponse)
 def page_dashboard(request: Request):
     return templates.TemplateResponse(request=request, name="dashboard.html")
@@ -178,7 +178,7 @@ def page_invoices(request: Request):
 def page_settings(request: Request):
     return templates.TemplateResponse(request=request, name="settings.html")
 
-# Products API
+# Products & Logs
 @app.get("/api/products")
 def get_products(s: Session = Depends(get_db)):
     return s.query(db.Product).all()
@@ -239,6 +239,15 @@ def get_stock_update_logs(s: Session = Depends(get_db)):
         })
     return out
 
+@app.delete("/api/products/update-logs/{log_id}")
+def delete_stock_log(log_id: int, s: Session = Depends(get_db)):
+    log = s.query(db.StockUpdateLog).filter(db.StockUpdateLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log entry not found")
+    s.delete(log)
+    s.commit()
+    return {"message": "Stock log deleted"}
+
 # Orders API
 @app.get("/api/orders")
 def get_orders(s: Session = Depends(get_db)):
@@ -281,21 +290,28 @@ def create_customer(cust: CustomerCreate, s: Session = Depends(get_db)):
 def get_customers(s: Session = Depends(get_db)):
     return s.query(db.Customer).all()
 
-# Invoices API
+# Invoices API (Edit & Regenerate Support)
 @app.get("/api/invoices")
 def get_invoices_history(s: Session = Depends(get_db)):
     invoices = s.query(db.Invoice).order_by(db.Invoice.created_at.desc()).all()
     results = []
     for inv in invoices:
+        txn = s.query(db.Transaction).filter(db.Transaction.invoice_id == inv.id).first()
         results.append({
             "id": inv.id,
+            "customer_id": inv.customer_id,
             "customer_name": inv.customer.name if inv.customer else "N/A",
+            "product_id": txn.product_id if txn else 0,
+            "quantity": txn.quantity if txn else 0,
+            "unit_price": txn.unit_price if txn else 0.0,
             "total_amount": inv.total_amount,
             "paid_amount": inv.paid_amount,
+            "include_gst": inv.include_gst,
             "currency": inv.currency,
             "status": inv.status,
             "order_date": inv.order_date or inv.created_at.strftime('%Y-%m-%d'),
-            "delivery_date": inv.delivery_date or 'N/A'
+            "delivery_date": inv.delivery_date or 'N/A',
+            "custom_sections": inv.custom_sections or {}
         })
     return results
 
@@ -337,6 +353,56 @@ def create_invoice(inv: InvoiceCreate, s: Session = Depends(get_db)):
     s.commit()
 
     return {"message": "Invoice Created", "invoice_id": new_inv.id}
+
+@app.put("/api/invoices/{invoice_id}")
+def update_invoice(invoice_id: int, inv: InvoiceCreate, s: Session = Depends(get_db)):
+    existing_inv = s.query(db.Invoice).filter(db.Invoice.id == invoice_id).first()
+    if not existing_inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    txn = s.query(db.Transaction).filter(db.Transaction.invoice_id == existing_inv.id).first()
+    if txn:
+        # Revert previous product stock deduction before applying new edit
+        old_prod = s.query(db.Product).filter(db.Product.id == txn.product_id).first()
+        if old_prod:
+            old_prod.stock_qty += txn.quantity
+
+    new_prod = s.query(db.Product).filter(db.Product.id == inv.product_id).first()
+    if not new_prod or new_prod.stock_qty < inv.quantity:
+        raise HTTPException(status_code=400, detail="Insufficient stock for updated invoice quantity")
+
+    new_prod.stock_qty -= inv.quantity
+
+    subtotal = inv.unit_price * inv.quantity
+    tax_amt = subtotal * (inv.tax_rate / 100.0) if inv.include_gst else 0.0
+    total = subtotal + tax_amt
+
+    existing_inv.customer_id = inv.customer_id
+    existing_inv.total_amount = total
+    existing_inv.tax_amount = tax_amt
+    existing_inv.paid_amount = inv.paid_amount
+    existing_inv.include_gst = inv.include_gst
+    existing_inv.status = "paid" if inv.paid_amount >= total else "unpaid"
+    existing_inv.currency = inv.currency
+    existing_inv.order_date = inv.order_date
+    existing_inv.delivery_date = inv.delivery_date
+    existing_inv.custom_sections = inv.custom_sections
+
+    if txn:
+        txn.product_id = inv.product_id
+        txn.quantity = inv.quantity
+        txn.unit_price = inv.unit_price
+
+    s.commit()
+    return {"message": "Invoice Updated & Regenerated", "invoice_id": existing_inv.id}
+
+@app.delete("/api/invoices/{invoice_id}")
+def delete_invoice(invoice_id: int, s: Session = Depends(get_db)):
+    inv = s.query(db.Invoice).filter(db.Invoice.id == invoice_id).first()
+    if inv:
+        s.delete(inv)
+        s.commit()
+    return {"message": "Invoice deleted"}
 
 # Analytics
 @app.get("/api/analytics")
@@ -495,7 +561,7 @@ def generate_pdf_invoice(invoice_id: int, s: Session = Depends(get_db)):
         c.drawString(60, 535, prod.name)
         c.drawString(280, 535, prod.hsn_code)
         c.drawString(350, 535, f"{txn.quantity} NOS")
-        c.drawString(420, 535, f"{sym}{prod.unit_price:.2f}")
+        c.drawString(420, 535, f"{sym}{txn.unit_price:.2f}")
         c.drawString(500, 535, f"{sym}{subtotal:.2f}")
 
     c.line(30, 250, 580, 250)
