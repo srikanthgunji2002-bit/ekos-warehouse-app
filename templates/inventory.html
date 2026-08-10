@@ -25,7 +25,7 @@
 </div>
 
 <!-- Modal: Edit Product (Cumulative Stock Addition) -->
-<div id="editProdModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+<div id="editProdModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
         <h3 class="text-lg font-bold mb-2 text-slate-800">✏️ Add Stock Quantity (Cumulative)</h3>
         <p class="text-xs text-slate-500 mb-4">The quantity entered here will be added directly to previous stock.</p>
@@ -111,6 +111,7 @@
     function renderPartitions() {
         const container = document.getElementById('productPartitionsContainer');
         const filteredLogs = filterLogsByDate(allLogs);
+        const role = localStorage.getItem('ekos_role') || 'employee';
 
         if (productsList.length === 0) {
             container.innerHTML = `<div class="bg-white p-8 rounded text-center text-slate-400">No products registered yet.</div>`;
@@ -152,12 +153,13 @@
                                         <th class="p-2">Timestamp</th>
                                         <th class="p-2">Updated By</th>
                                         <th class="p-2">Action</th>
-                                        <th class="p-2">Qty Added/Removed</th>
-                                        <th class="p-2">New Total Remaining</th>
+                                        <th class="p-2">Qty Change</th>
+                                        <th class="p-2">New Total</th>
+                                        ${role === 'admin' ? `<th class="p-2 text-right">Delete Log</th>` : ''}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${pLogs.length === 0 ? `<tr><td colspan="5" class="p-3 text-slate-400 text-center">No logs found for this date range.</td></tr>` : 
+                                    ${pLogs.length === 0 ? `<tr><td colspan="6" class="p-3 text-slate-400 text-center">No logs found for this date range.</td></tr>` : 
                                     pLogs.map(l => `
                                         <tr class="border-b hover:bg-slate-50">
                                             <td class="p-2 font-mono text-slate-500">${l.timestamp}</td>
@@ -165,6 +167,7 @@
                                             <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${l.change_type === 'IN' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${l.change_type}</span></td>
                                             <td class="p-2 font-bold ${l.qty_changed >= 0 ? 'text-emerald-600' : 'text-red-600'}">${l.qty_changed >= 0 ? '+' : ''}${l.qty_changed}</td>
                                             <td class="p-2 font-bold text-slate-900">${l.new_total_qty} NOS</td>
+                                            ${role === 'admin' ? `<td class="p-2 text-right"><button onclick="deleteLog(${l.id})" class="text-red-600 hover:text-red-800 font-bold px-1">✕</button></td>` : ''}
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -175,6 +178,13 @@
                 </div>
             `;
         }).join('');
+    }
+
+    async function deleteLog(logId) {
+        if (confirm("Delete this stock log entry?")) {
+            await fetch(`/api/products/update-logs/${logId}`, { method: 'DELETE' });
+            loadData();
+        }
     }
 
     function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
