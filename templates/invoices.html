@@ -6,11 +6,16 @@
         <a href="/api/export/invoices" class="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-emerald-700">📊 Export Invoices Excel</a>
     </div>
 
-    <!-- Invoice Generation Form -->
+    <!-- Invoice Form -->
     <div class="bg-white p-6 rounded-lg shadow max-w-3xl space-y-4">
-        <h2 class="text-lg font-bold text-slate-700 border-b pb-2">Generate Tax Invoice</h2>
+        <div class="flex justify-between items-center border-b pb-2">
+            <h2 id="formTitle" class="text-lg font-bold text-slate-700">Generate Tax Invoice</h2>
+            <button id="cancelEditBtn" onclick="resetInvoiceForm()" class="hidden text-xs text-red-600 font-bold hover:underline">✕ Cancel Editing</button>
+        </div>
         
         <form id="invForm" class="grid grid-cols-2 gap-4">
+            <input type="hidden" id="editingInvoiceId" value="" />
+
             <div>
                 <label class="block text-xs font-semibold text-slate-500 mb-1">Select Customer</label>
                 <select id="selCust" class="w-full border p-2 text-sm rounded" required></select>
@@ -54,7 +59,6 @@
                 <input type="number" step="0.01" id="paidAmt" placeholder="0.00" class="w-full border p-2 text-sm rounded" required />
             </div>
 
-            <!-- Admin Custom Dynamic Metadata Fields -->
             <div class="col-span-2 border-t pt-3">
                 <div class="flex justify-between items-center mb-2">
                     <label class="text-xs font-bold text-slate-700">➕ Admin Custom Sections / Extra Fields</label>
@@ -64,36 +68,37 @@
             </div>
 
             <button type="button" onclick="renderVisualPreview()" class="col-span-1 bg-slate-800 text-white p-2 rounded text-sm font-medium hover:bg-slate-700">Visual Invoice Preview</button>
-            <button type="submit" class="col-span-1 bg-emerald-600 text-white p-2 rounded text-sm font-medium hover:bg-emerald-700">Confirm & Save PDF</button>
+            <button type="submit" id="submitInvBtn" class="col-span-1 bg-emerald-600 text-white p-2 rounded text-sm font-medium hover:bg-emerald-700">Confirm & Save PDF</button>
         </form>
     </div>
 
-    <!-- Stored Invoices & History Directory -->
+    <!-- Stored Invoices History Archive -->
     <div class="bg-white p-6 rounded-lg shadow space-y-3">
         <h2 class="text-lg font-bold text-slate-800">📁 Stored Invoices History Archive</h2>
         
-        <table class="w-full text-left border-collapse text-xs">
-            <thead>
-                <tr class="border-b bg-slate-100 text-slate-700">
-                    <th class="p-2.5">Invoice ID</th>
-                    <th class="p-2.5">Customer Name</th>
-                    <th class="p-2.5">Order Date</th>
-                    <th class="p-2.5">Delivery Date</th>
-                    <th class="p-2.5">Total Amount</th>
-                    <th class="p-2.5">Paid Amount</th>
-                    <th class="p-2.5">Status</th>
-                    <th class="p-2.5 text-right">PDF Action</th>
-                </tr>
-            </thead>
-            <tbody id="invoicesHistoryTable"></tbody>
-        </table>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b bg-slate-100 text-slate-700">
+                        <th class="p-2.5">Invoice ID</th>
+                        <th class="p-2.5">Customer Name</th>
+                        <th class="p-2.5">Order Date</th>
+                        <th class="p-2.5">Delivery Date</th>
+                        <th class="p-2.5">Total Amount</th>
+                        <th class="p-2.5">Paid Amount</th>
+                        <th class="p-2.5">Status</th>
+                        <th class="p-2.5 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="invoicesHistoryTable"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <!-- Modal: Exact PDF-Style Visual Document Preview -->
 <div id="visualPreviewModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white p-8 rounded shadow-2xl max-w-2xl w-full border border-slate-300 font-sans space-y-4 max-h-[90vh] overflow-y-auto">
-        
         <div class="flex justify-between items-start border-b pb-4">
             <div>
                 <h1 class="text-xl font-bold text-slate-900">EKOS SUSTAINABLE PACKAGING</h1>
@@ -112,7 +117,7 @@
                 <p id="prevCustGst" class="text-slate-500"></p>
             </div>
             <div class="border-l pl-4 space-y-1">
-                <p><strong>Invoice No:</strong> EKOS-PREVIEW</p>
+                <p><strong>Invoice No:</strong> <span id="prevInvNo">EKOS-PREVIEW</span></p>
                 <p><strong>Order Date:</strong> <span id="prevOrderDate"></span></p>
                 <p><strong>Delivery Date:</strong> <span id="prevDelDate"></span></p>
                 <div id="prevCustomList" class="pt-2 text-slate-600"></div>
@@ -159,6 +164,7 @@
 <script>
     let customersList = [];
     let productsList = [];
+    let invoicesHistory = [];
 
     async function init() {
         const cRes = await fetch('/api/customers');
@@ -174,9 +180,10 @@
 
     async function loadInvoiceHistory() {
         const res = await fetch('/api/invoices');
-        const invoices = await res.json();
+        invoicesHistory = await res.json();
+        const role = localStorage.getItem('ekos_role') || 'employee';
 
-        document.getElementById('invoicesHistoryTable').innerHTML = invoices.map(inv => {
+        document.getElementById('invoicesHistoryTable').innerHTML = invoicesHistory.map(inv => {
             const sym = inv.currency === 'INR' ? '₹' : '$';
             return `
                 <tr class="border-b hover:bg-slate-50">
@@ -187,12 +194,60 @@
                     <td class="p-2.5 font-bold text-slate-900">${sym}${inv.total_amount.toFixed(2)}</td>
                     <td class="p-2.5 font-semibold text-emerald-600">${sym}${inv.paid_amount.toFixed(2)}</td>
                     <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${inv.status.toUpperCase()}</span></td>
-                    <td class="p-2.5 text-right">
-                        <a href="/api/invoices/${inv.id}/pdf" target="_blank" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-semibold hover:bg-indigo-100">📄 Download PDF</a>
+                    <td class="p-2.5 text-right space-x-1 whitespace-nowrap">
+                        <button onclick="editInvoice(${inv.id})" class="px-2 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded font-bold hover:bg-amber-200">✏️ Edit</button>
+                        <a href="/api/invoices/${inv.id}/pdf" target="_blank" class="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-semibold hover:bg-indigo-100">📄 PDF</a>
+                        ${role === 'admin' ? `<button onclick="deleteInvoice(${inv.id})" class="px-2 py-1 bg-red-100 text-red-700 border border-red-200 rounded font-bold hover:bg-red-200">✕</button>` : ''}
                     </td>
                 </tr>
             `;
         }).join('');
+    }
+
+    function editInvoice(invId) {
+        const inv = invoicesHistory.find(x => x.id === invId);
+        if (!inv) return;
+
+        document.getElementById('editingInvoiceId').value = inv.id;
+        document.getElementById('formTitle').innerText = `✏️ Edit & Regenerate Invoice: EKOS-${inv.id.toString().padStart(4, '0')}`;
+        document.getElementById('submitInvBtn').innerText = "Update & Regenerate PDF";
+        document.getElementById('cancelEditBtn').classList.remove('hidden');
+
+        document.getElementById('selCust').value = inv.customer_id;
+        document.getElementById('selProd').value = inv.product_id;
+        document.getElementById('saleQty').value = inv.quantity;
+        document.getElementById('unitPrice').value = inv.unit_price;
+        document.getElementById('currency').value = inv.currency;
+        document.getElementById('includeGst').value = inv.include_gst ? "true" : "false";
+        document.getElementById('orderDate').value = inv.order_date;
+        document.getElementById('deliveryDate').value = inv.delivery_date;
+        document.getElementById('paidAmt').value = inv.paid_amount;
+
+        const customContainer = document.getElementById('customFieldsContainer');
+        customContainer.innerHTML = '';
+        if (inv.custom_sections) {
+            Object.entries(inv.custom_sections).forEach(([k, v]) => {
+                const div = document.createElement('div');
+                div.className = "flex space-x-2 items-center";
+                div.innerHTML = `
+                    <input type="text" value="${k}" class="w-1/2 border p-1.5 text-xs rounded custom-key" />
+                    <input type="text" value="${v}" class="w-1/2 border p-1.5 text-xs rounded custom-val" />
+                    <button type="button" onclick="this.parentElement.remove()" class="text-red-600 font-bold px-2">✕</button>
+                `;
+                customContainer.appendChild(div);
+            });
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetInvoiceForm() {
+        document.getElementById('editingInvoiceId').value = "";
+        document.getElementById('formTitle').innerText = "Generate Tax Invoice";
+        document.getElementById('submitInvBtn').innerText = "Confirm & Save PDF";
+        document.getElementById('cancelEditBtn').classList.add('hidden');
+        document.getElementById('invForm').reset();
+        document.getElementById('customFieldsContainer').innerHTML = '';
     }
 
     function addCustomFieldRow() {
@@ -238,6 +293,7 @@
         const p = getPayload();
         const c = customersList.find(x => x.id === p.customer_id);
         const prod = productsList.find(x => x.id === p.product_id);
+        const editId = document.getElementById('editingInvoiceId').value;
 
         if (!c || !prod || isNaN(p.quantity) || isNaN(p.unit_price)) {
             alert("Please fill in all customer, product, quantity, and unit price fields.");
@@ -249,6 +305,7 @@
         const tax = p.include_gst ? subtotal * 0.18 : 0.0;
         const total = subtotal + tax;
 
+        document.getElementById('prevInvNo').innerText = editId ? `EKOS-${editId.padStart(4, '0')}` : 'EKOS-PREVIEW';
         document.getElementById('prevCustName').innerText = c.name;
         document.getElementById('prevCustAddr').innerText = c.address;
         document.getElementById('prevCustPhone').innerText = `Ph: ${c.phone}`;
@@ -278,8 +335,12 @@
 
     async function commitInvoice() {
         closeModal('visualPreviewModal');
-        const res = await fetch('/api/invoices', {
-            method: 'POST',
+        const editId = document.getElementById('editingInvoiceId').value;
+        const url = editId ? `/api/invoices/${editId}` : '/api/invoices';
+        const method = editId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(getPayload())
         });
@@ -289,8 +350,14 @@
         } else {
             const data = await res.json();
             window.open(`/api/invoices/${data.invoice_id}/pdf`, '_blank');
-            document.getElementById('invForm').reset();
-            document.getElementById('customFieldsContainer').innerHTML = '';
+            resetInvoiceForm();
+            init();
+        }
+    }
+
+    async function deleteInvoice(invId) {
+        if (confirm("Delete this invoice record?")) {
+            await fetch(`/api/invoices/${invId}`, { method: 'DELETE' });
             init();
         }
     }
