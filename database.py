@@ -3,10 +3,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import datetime
 
-# Automatically use PostgreSQL URL if deployed on Render/Railway, otherwise default to local SQLite
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse.db")
 
-# Fix for Render/Heroku postgres:// scheme if provided
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -58,7 +56,7 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(String, unique=True, index=True)
     customer_name = Column(String)
-    customer_phone = Column(String, nullable=True)  # Updated: Added Phone Number
+    customer_phone = Column(String, nullable=True)
     product_details = Column(String)
     quantity = Column(Integer)
     order_date = Column(String)
@@ -82,6 +80,7 @@ class Invoice(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     customer = relationship("Customer")
+    items = relationship("Transaction", back_populates="invoice", cascade="all, delete-orphan")
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -94,5 +93,6 @@ class Transaction(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     product = relationship("Product")
+    invoice = relationship("Invoice", back_populates="items")
 
 Base.metadata.create_all(bind=engine)
