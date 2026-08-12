@@ -6,60 +6,66 @@
         <a href="/api/export/invoices" class="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-emerald-700">📊 Export Invoices Excel</a>
     </div>
 
-    <!-- Invoice Form -->
-    <div class="bg-white p-6 rounded-lg shadow max-w-3xl space-y-4">
+    <!-- Multi-Product Invoice Form -->
+    <div class="bg-white p-6 rounded-lg shadow max-w-4xl space-y-4">
         <div class="flex justify-between items-center border-b pb-2">
             <h2 id="formTitle" class="text-lg font-bold text-slate-700">Generate Tax Invoice</h2>
             <button id="cancelEditBtn" onclick="resetInvoiceForm()" class="hidden text-xs text-red-600 font-bold hover:underline">✕ Cancel Editing</button>
         </div>
         
-        <form id="invForm" class="grid grid-cols-2 gap-4">
+        <form id="invForm" class="space-y-4">
             <input type="hidden" id="editingInvoiceId" value="" />
 
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Select Customer</label>
-                <select id="selCust" class="w-full border p-2 text-sm rounded" required></select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Select Product</label>
-                <select id="selProd" class="w-full border p-2 text-sm rounded" required></select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Quantity</label>
-                <input type="number" id="saleQty" placeholder="e.g. 50" class="w-full border p-2 text-sm rounded" required />
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Unit Price</label>
-                <input type="number" step="0.01" id="unitPrice" placeholder="Price per unit" class="w-full border p-2 text-sm rounded" required />
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Currency</label>
-                <select id="currency" class="w-full border p-2 text-sm rounded" required>
-                    <option value="INR">INR (₹)</option>
-                    <option value="USD">USD ($)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Include GST?</label>
-                <select id="includeGst" class="w-full border p-2 text-sm rounded" required>
-                    <option value="true">Yes (18% GST)</option>
-                    <option value="false">No GST</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Order Date</label>
-                <input type="date" id="orderDate" class="w-full border p-2 text-sm rounded" required />
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Delivery Date</label>
-                <input type="date" id="deliveryDate" class="w-full border p-2 text-sm rounded" required />
-            </div>
-            <div class="col-span-2">
-                <label class="block text-xs font-semibold text-slate-500 mb-1">Amount Paid Now</label>
-                <input type="number" step="0.01" id="paidAmt" placeholder="0.00" class="w-full border p-2 text-sm rounded" required />
+            <!-- Customer & Dates -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Select Customer</label>
+                    <select id="selCust" class="w-full border p-2 text-sm rounded" required></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Order Date</label>
+                    <input type="date" id="orderDate" class="w-full border p-2 text-sm rounded" required />
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Delivery Date</label>
+                    <input type="date" id="deliveryDate" class="w-full border p-2 text-sm rounded" required />
+                </div>
             </div>
 
-            <div class="col-span-2 border-t pt-3">
+            <!-- Dynamic Multiple Products Section -->
+            <div class="border-t border-b py-3 space-y-3">
+                <div class="flex justify-between items-center">
+                    <label class="text-xs font-bold text-slate-800 uppercase tracking-wide">📦 Line Items (Multiple Products)</label>
+                    <button type="button" onclick="addProductRow()" class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded text-xs font-bold hover:bg-indigo-100">+ Add Another Product</button>
+                </div>
+
+                <div id="productRowsContainer" class="space-y-3"></div>
+            </div>
+
+            <!-- Payment Details -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Currency</label>
+                    <select id="currency" class="w-full border p-2 text-sm rounded" required>
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Include GST?</label>
+                    <select id="includeGst" class="w-full border p-2 text-sm rounded" required>
+                        <option value="true">Yes (18% GST)</option>
+                        <option value="false">No GST</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Amount Paid Now</label>
+                    <input type="number" step="0.01" id="paidAmt" placeholder="0.00" class="w-full border p-2 text-sm rounded" required />
+                </div>
+            </div>
+
+            <!-- Custom Admin Metadata Sections -->
+            <div class="border-t pt-3">
                 <div class="flex justify-between items-center mb-2">
                     <label class="text-xs font-bold text-slate-700">➕ Admin Custom Sections / Extra Fields</label>
                     <button type="button" onclick="addCustomFieldRow()" class="text-xs text-blue-600 font-semibold hover:underline">+ Add Section</button>
@@ -67,12 +73,14 @@
                 <div id="customFieldsContainer" class="space-y-2"></div>
             </div>
 
-            <button type="button" onclick="renderVisualPreview()" class="col-span-1 bg-slate-800 text-white p-2 rounded text-sm font-medium hover:bg-slate-700">Visual Invoice Preview</button>
-            <button type="submit" id="submitInvBtn" class="col-span-1 bg-emerald-600 text-white p-2 rounded text-sm font-medium hover:bg-emerald-700">Confirm & Save PDF</button>
+            <div class="grid grid-cols-2 gap-4 pt-2">
+                <button type="button" onclick="renderVisualPreview()" class="bg-slate-800 text-white p-2.5 rounded text-sm font-medium hover:bg-slate-700">Visual Invoice Preview</button>
+                <button type="submit" id="submitInvBtn" class="bg-emerald-600 text-white p-2.5 rounded text-sm font-medium hover:bg-emerald-700">Confirm & Save PDF</button>
+            </div>
         </form>
     </div>
 
-    <!-- Stored Invoices History Archive -->
+    <!-- Stored Invoices History -->
     <div class="bg-white p-6 rounded-lg shadow space-y-3">
         <h2 class="text-lg font-bold text-slate-800">📁 Stored Invoices History Archive</h2>
         
@@ -82,8 +90,7 @@
                     <tr class="border-b bg-slate-100 text-slate-700">
                         <th class="p-2.5">Invoice ID</th>
                         <th class="p-2.5">Customer Name</th>
-                        <th class="p-2.5">Order Date</th>
-                        <th class="p-2.5">Delivery Date</th>
+                        <th class="p-2.5">Line Items Included</th>
                         <th class="p-2.5">Total Amount</th>
                         <th class="p-2.5">Paid Amount</th>
                         <th class="p-2.5">Status</th>
@@ -96,7 +103,7 @@
     </div>
 </div>
 
-<!-- Modal: Exact PDF-Style Visual Document Preview -->
+<!-- Modal: Exact Visual Document Preview -->
 <div id="visualPreviewModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-white p-8 rounded shadow-2xl max-w-2xl w-full border border-slate-300 font-sans space-y-4 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-start border-b pb-4">
@@ -124,6 +131,7 @@
             </div>
         </div>
 
+        <!-- Dynamic Preview Items Table -->
         <table class="w-full text-left border-collapse text-xs">
             <thead>
                 <tr class="border-b bg-slate-100">
@@ -134,15 +142,7 @@
                     <th class="p-2 text-right">Total</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr class="border-b">
-                    <td id="prevProdName" class="p-2 font-medium"></td>
-                    <td id="prevProdHsn" class="p-2"></td>
-                    <td id="prevProdQty" class="p-2"></td>
-                    <td id="prevProdRate" class="p-2"></td>
-                    <td id="prevProdTotal" class="p-2 text-right font-bold"></td>
-                </tr>
-            </tbody>
+            <tbody id="prevItemsTable"></tbody>
         </table>
 
         <div class="flex justify-end pt-2 text-xs">
@@ -173,9 +173,52 @@
 
         const pRes = await fetch('/api/products');
         productsList = await pRes.json();
-        document.getElementById('selProd').innerHTML = '<option value="">Select Product</option>' + productsList.map(p => `<option value="${p.id}">${p.name} (Stock: ${p.stock_qty})</option>`).join('');
+
+        // Initialize 1 default product row
+        if (document.querySelectorAll('.product-row').length === 0) {
+            addProductRow();
+        }
 
         loadInvoiceHistory();
+    }
+
+    function addProductRow(prodId = "", qty = "", price = "") {
+        const container = document.getElementById('productRowsContainer');
+        const rowId = Date.now() + Math.random().toString(36).substring(2, 5);
+
+        const div = document.createElement('div');
+        div.className = "grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded border border-slate-200 product-row";
+        div.id = `row-${rowId}`;
+
+        const optionsHtml = productsList.map(p => `<option value="${p.id}" ${p.id == prodId ? 'selected' : ''}>${p.name} (Stock: ${p.stock_qty})</option>`).join('');
+
+        div.innerHTML = `
+            <div class="md:col-span-5">
+                <select class="w-full border p-1.5 text-xs rounded item-prod" required>
+                    <option value="">Select Product</option>
+                    ${optionsHtml}
+                </select>
+            </div>
+            <div class="md:col-span-3">
+                <input type="number" placeholder="Qty" value="${qty}" class="w-full border p-1.5 text-xs rounded item-qty" required />
+            </div>
+            <div class="md:col-span-3">
+                <input type="number" step="0.01" placeholder="Unit Price" value="${price}" class="w-full border p-1.5 text-xs rounded item-price" required />
+            </div>
+            <div class="md:col-span-1 text-right">
+                <button type="button" onclick="removeProductRow('row-${rowId}')" class="text-red-600 font-bold text-sm px-2">✕</button>
+            </div>
+        `;
+        container.appendChild(div);
+    }
+
+    function removeProductRow(rowId) {
+        const rows = document.querySelectorAll('.product-row');
+        if (rows.length <= 1) {
+            alert("An invoice must contain at least one product line item.");
+            return;
+        }
+        document.getElementById(rowId).remove();
     }
 
     async function loadInvoiceHistory() {
@@ -185,12 +228,13 @@
 
         document.getElementById('invoicesHistoryTable').innerHTML = invoicesHistory.map(inv => {
             const sym = inv.currency === 'INR' ? '₹' : '$';
+            const itemsSummary = inv.items ? inv.items.map(i => `${i.product_name} (${i.quantity})`).join(', ') : 'N/A';
+
             return `
                 <tr class="border-b hover:bg-slate-50">
                     <td class="p-2.5 font-bold font-mono text-slate-800">EKOS-${inv.id.toString().padStart(4, '0')}</td>
                     <td class="p-2.5 font-medium">${inv.customer_name}</td>
-                    <td class="p-2.5 text-slate-500">${inv.order_date}</td>
-                    <td class="p-2.5 text-slate-500">${inv.delivery_date}</td>
+                    <td class="p-2.5 text-slate-600 max-w-xs truncate">${itemsSummary}</td>
                     <td class="p-2.5 font-bold text-slate-900">${sym}${inv.total_amount.toFixed(2)}</td>
                     <td class="p-2.5 font-semibold text-emerald-600">${sym}${inv.paid_amount.toFixed(2)}</td>
                     <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${inv.status.toUpperCase()}</span></td>
@@ -214,15 +258,22 @@
         document.getElementById('cancelEditBtn').classList.remove('hidden');
 
         document.getElementById('selCust').value = inv.customer_id;
-        document.getElementById('selProd').value = inv.product_id;
-        document.getElementById('saleQty').value = inv.quantity;
-        document.getElementById('unitPrice').value = inv.unit_price;
         document.getElementById('currency').value = inv.currency;
         document.getElementById('includeGst').value = inv.include_gst ? "true" : "false";
         document.getElementById('orderDate').value = inv.order_date;
         document.getElementById('deliveryDate').value = inv.delivery_date;
         document.getElementById('paidAmt').value = inv.paid_amount;
 
+        // Populate multiple product rows
+        const container = document.getElementById('productRowsContainer');
+        container.innerHTML = '';
+        if (inv.items && inv.items.length > 0) {
+            inv.items.forEach(item => addProductRow(item.product_id, item.quantity, item.unit_price));
+        } else {
+            addProductRow();
+        }
+
+        // Custom sections
         const customContainer = document.getElementById('customFieldsContainer');
         customContainer.innerHTML = '';
         if (inv.custom_sections) {
@@ -247,7 +298,9 @@
         document.getElementById('submitInvBtn').innerText = "Confirm & Save PDF";
         document.getElementById('cancelEditBtn').classList.add('hidden');
         document.getElementById('invForm').reset();
+        document.getElementById('productRowsContainer').innerHTML = '';
         document.getElementById('customFieldsContainer').innerHTML = '';
+        addProductRow();
     }
 
     function addCustomFieldRow() {
@@ -273,12 +326,25 @@
         return customObj;
     }
 
+    function getLineItemsPayload() {
+        const rows = document.querySelectorAll('.product-row');
+        const items = [];
+        rows.forEach(r => {
+            const pId = parseInt(r.querySelector('.item-prod').value);
+            const qty = parseInt(r.querySelector('.item-qty').value);
+            const price = parseFloat(r.querySelector('.item-price').value);
+
+            if (pId && !isNaN(qty) && !isNaN(price)) {
+                items.push({ product_id: pId, quantity: qty, unit_price: price });
+            }
+        });
+        return items;
+    }
+
     function getPayload() {
         return {
             customer_id: parseInt(document.getElementById('selCust').value),
-            product_id: parseInt(document.getElementById('selProd').value),
-            quantity: parseInt(document.getElementById('saleQty').value),
-            unit_price: parseFloat(document.getElementById('unitPrice').value),
+            items: getLineItemsPayload(),
             include_gst: document.getElementById('includeGst').value === "true",
             currency: document.getElementById('currency').value,
             order_date: document.getElementById('orderDate').value,
@@ -292,16 +358,34 @@
     function renderVisualPreview() {
         const p = getPayload();
         const c = customersList.find(x => x.id === p.customer_id);
-        const prod = productsList.find(x => x.id === p.product_id);
         const editId = document.getElementById('editingInvoiceId').value;
 
-        if (!c || !prod || isNaN(p.quantity) || isNaN(p.unit_price)) {
-            alert("Please fill in all customer, product, quantity, and unit price fields.");
+        if (!c || p.items.length === 0) {
+            alert("Please select a customer and fill in at least one valid product line item.");
             return;
         }
 
         const sym = p.currency === 'INR' ? '₹' : '$';
-        const subtotal = p.quantity * p.unit_price;
+        let subtotal = 0.0;
+
+        // Render line items preview rows
+        const prevItemsTable = document.getElementById('prevItemsTable');
+        prevItemsTable.innerHTML = p.items.map(item => {
+            const prod = productsList.find(x => x.id === item.product_id);
+            const itemTotal = item.quantity * item.unit_price;
+            subtotal += itemTotal;
+
+            return `
+                <tr class="border-b">
+                    <td class="p-2 font-medium">${prod ? prod.name : 'Item'}</td>
+                    <td class="p-2">${prod ? prod.hsn_code : 'N/A'}</td>
+                    <td class="p-2">${item.quantity} NOS</td>
+                    <td class="p-2">${sym}${item.unit_price.toFixed(2)}</td>
+                    <td class="p-2 text-right font-bold">${sym}${itemTotal.toFixed(2)}</td>
+                </tr>
+            `;
+        }).join('');
+
         const tax = p.include_gst ? subtotal * 0.18 : 0.0;
         const total = subtotal + tax;
 
@@ -316,12 +400,6 @@
 
         const customContainer = document.getElementById('prevCustomList');
         customContainer.innerHTML = Object.entries(p.custom_sections).map(([k, v]) => `<p><strong>${k}:</strong> ${v}</p>`).join('');
-
-        document.getElementById('prevProdName').innerText = prod.name;
-        document.getElementById('prevProdHsn').innerText = prod.hsn_code;
-        document.getElementById('prevProdQty').innerText = `${p.quantity} NOS`;
-        document.getElementById('prevProdRate').innerText = `${sym}${p.unit_price.toFixed(2)}`;
-        document.getElementById('prevProdTotal').innerText = `${sym}${subtotal.toFixed(2)}`;
 
         document.getElementById('prevSubtotal').innerText = `${sym}${subtotal.toFixed(2)}`;
         document.getElementById('prevTax').innerText = `${sym}${tax.toFixed(2)}`;
