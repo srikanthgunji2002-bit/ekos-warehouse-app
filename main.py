@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import database as db
 import openpyxl
 
@@ -80,11 +80,14 @@ class CustomerCreate(BaseModel):
     email: str
     address: str
 
-class InvoiceCreate(BaseModel):
-    customer_id: int
+class InvoiceItem(BaseModel):
     product_id: int
     quantity: int
     unit_price: float
+
+class InvoiceCreate(BaseModel):
+    customer_id: int
+    items: List[InvoiceItem]  # Multiple line items support
     include_gst: bool = True
     tax_rate: float = 18.0
     paid_amount: float
@@ -178,7 +181,7 @@ def page_invoices(request: Request):
 def page_settings(request: Request):
     return templates.TemplateResponse(request=request, name="settings.html")
 
-# Products & Logs
+# Products & Stock Logs
 @app.get("/api/products")
 def get_products(s: Session = Depends(get_db)):
     return s.query(db.Product).all()
@@ -290,20 +293,28 @@ def create_customer(cust: CustomerCreate, s: Session = Depends(get_db)):
 def get_customers(s: Session = Depends(get_db)):
     return s.query(db.Customer).all()
 
-# Invoices API (Edit & Regenerate Support)
+# Invoices API (Multi-Product Support)
 @app.get("/api/invoices")
 def get_invoices_history(s: Session = Depends(get_db)):
     invoices = s.query(db.Invoice).order_by(db.Invoice.created_at.desc()).all()
     results = []
     for inv in invoices:
-        txn = s.query(db.Transaction).filter(db.Transaction.invoice_id == inv.id).first()
+        txns = s.query(db.Transaction).filter(db.Transaction.invoice_id == inv.id).all()
+        items_payload = []
+        for t in txns:
+            items_payload.append({
+                "product_id": t.product_id,
+                "quantity": t.quantity,
+                "unit_price": t.unit_price,
+                "product_name": t.product.name if t.product else "Deleted Product",
+                "hsn_code": t.product.hsn_code if t.product else "N/A"
+            })
+
         results.append({
             "id": inv.id,
             "customer_id": inv.customer_id,
             "customer_name": inv.customer.name if inv.customer else "N/A",
-            "product_id": txn.product_id if txn else 0,
-            "quantity": txn.quantity if txn else 0,
-            "unit_price": txn.unit_price if txn else 0.0,
+            "items": items_payload,
             "total_amount": inv.total_amount,
             "paid_amount": inv.paid_amount,
             "include_gst": inv.include_gst,
@@ -317,18 +328,25 @@ def get_invoices_history(s: Session = Depends(get_db)):
 
 @app.post("/api/invoices")
 def create_invoice(inv: InvoiceCreate, s: Session = Depends(get_db)):
-    prod = s.query(db.Product).filter(db.Product.id == inv.product_id).first()
     cust = s.query(db.Customer).filter(db.Customer.id == inv.customer_id).first()
-    
-    if not prod or prod.stock_qty < inv.quantity:
-        raise HTTPException(status_code=400, detail="Insufficient stock available")
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found")
 
-    prod.stock_qty -= inv.quantity
-    
-    subtotal = inv.unit_price * inv.quantity
+    if not inv.items:
+        raise HTTPException(status_code=400, detail="Invoice must contain at least one product line item")
+
+    subtotal = 0.0
+    # Stock availability verification
+    for item in inv.items:
+        prod = s.query(db.Product).filter(db.Product.id == item.product_id).first()
+        if not prod or prod.stock_qty < item.quantity:
+            prod_name = prod.name if prod else f"ID {item.product_id}"
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for product: {prod_name}")
+        subtotal += item.unit_price * item.quantity
+
     tax_amt = subtotal * (inv.tax_rate / 100.0) if inv.include_gst else 0.0
     total = subtotal + tax_amt
-    
+
     new_inv = db.Invoice(
         customer_id=cust.id, 
         total_amount=total, 
@@ -345,13 +363,18 @@ def create_invoice(inv: InvoiceCreate, s: Session = Depends(get_db)):
     s.commit()
     s.refresh(new_inv)
 
-    txn = db.Transaction(product_id=prod.id, invoice_id=new_inv.id, change_type="OUT", quantity=inv.quantity, unit_price=inv.unit_price)
-    s.add(txn)
-    
-    log = db.StockUpdateLog(product_id=prod.id, updated_by="Invoice Sale", change_type="OUT", qty_changed=-inv.quantity, new_total_qty=prod.stock_qty)
-    s.add(log)
-    s.commit()
+    # Save multiple transactions & deduct inventory
+    for item in inv.items:
+        prod = s.query(db.Product).filter(db.Product.id == item.product_id).first()
+        prod.stock_qty -= item.quantity
 
+        txn = db.Transaction(product_id=prod.id, invoice_id=new_inv.id, change_type="OUT", quantity=item.quantity, unit_price=item.unit_price)
+        s.add(txn)
+
+        log = db.StockUpdateLog(product_id=prod.id, updated_by="Invoice Sale", change_type="OUT", qty_changed=-item.quantity, new_total_qty=prod.stock_qty)
+        s.add(log)
+
+    s.commit()
     return {"message": "Invoice Created", "invoice_id": new_inv.id}
 
 @app.put("/api/invoices/{invoice_id}")
@@ -360,20 +383,23 @@ def update_invoice(invoice_id: int, inv: InvoiceCreate, s: Session = Depends(get
     if not existing_inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    txn = s.query(db.Transaction).filter(db.Transaction.invoice_id == existing_inv.id).first()
-    if txn:
-        # Revert previous product stock deduction before applying new edit
-        old_prod = s.query(db.Product).filter(db.Product.id == txn.product_id).first()
-        if old_prod:
-            old_prod.stock_qty += txn.quantity
+    # Revert all previous transactions and restore stock
+    old_txns = s.query(db.Transaction).filter(db.Transaction.invoice_id == existing_inv.id).all()
+    for t in old_txns:
+        old_p = s.query(db.Product).filter(db.Product.id == t.product_id).first()
+        if old_p:
+            old_p.stock_qty += t.quantity
+        s.delete(t)
+    s.commit()
 
-    new_prod = s.query(db.Product).filter(db.Product.id == inv.product_id).first()
-    if not new_prod or new_prod.stock_qty < inv.quantity:
-        raise HTTPException(status_code=400, detail="Insufficient stock for updated invoice quantity")
+    subtotal = 0.0
+    for item in inv.items:
+        prod = s.query(db.Product).filter(db.Product.id == item.product_id).first()
+        if not prod or prod.stock_qty < item.quantity:
+            prod_name = prod.name if prod else f"ID {item.product_id}"
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for updated invoice product: {prod_name}")
+        subtotal += item.unit_price * item.quantity
 
-    new_prod.stock_qty -= inv.quantity
-
-    subtotal = inv.unit_price * inv.quantity
     tax_amt = subtotal * (inv.tax_rate / 100.0) if inv.include_gst else 0.0
     total = subtotal + tax_amt
 
@@ -388,10 +414,12 @@ def update_invoice(invoice_id: int, inv: InvoiceCreate, s: Session = Depends(get
     existing_inv.delivery_date = inv.delivery_date
     existing_inv.custom_sections = inv.custom_sections
 
-    if txn:
-        txn.product_id = inv.product_id
-        txn.quantity = inv.quantity
-        txn.unit_price = inv.unit_price
+    for item in inv.items:
+        prod = s.query(db.Product).filter(db.Product.id == item.product_id).first()
+        prod.stock_qty -= item.quantity
+
+        txn = db.Transaction(product_id=prod.id, invoice_id=existing_inv.id, change_type="OUT", quantity=item.quantity, unit_price=item.unit_price)
+        s.add(txn)
 
     s.commit()
     return {"message": "Invoice Updated & Regenerated", "invoice_id": existing_inv.id}
@@ -490,15 +518,14 @@ def export_invoices_excel(s: Session = Depends(get_db)):
         headers={"Content-Disposition": "attachment; filename=ekos_sales_invoices.xlsx"}
     )
 
-# PDF Generation
+# PDF Generation (Multi-Item Render Engine)
 @app.get("/api/invoices/{invoice_id}/pdf")
 def generate_pdf_invoice(invoice_id: int, s: Session = Depends(get_db)):
     inv = s.query(db.Invoice).filter(db.Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    txn = s.query(db.Transaction).filter(db.Transaction.invoice_id == inv.id).first()
-    prod = txn.product if txn else None
+    txns = s.query(db.Transaction).filter(db.Transaction.invoice_id == inv.id).all()
     sym = "Rs. " if inv.currency == "INR" else "$ "
 
     buffer = io.BytesIO()
@@ -545,6 +572,7 @@ def generate_pdf_invoice(invoice_id: int, s: Session = Depends(get_db)):
 
     c.line(30, 570, 580, 570)
 
+    # Table Header
     c.setFont("Helvetica-Bold", 8)
     c.drawString(35, 558, "Sr.")
     c.drawString(60, 558, "Name of Product / Service")
@@ -554,16 +582,21 @@ def generate_pdf_invoice(invoice_id: int, s: Session = Depends(get_db)):
     c.drawString(500, 558, f"Total ({inv.currency})")
     c.line(30, 550, 580, 550)
 
-    if prod and txn:
-        subtotal = txn.unit_price * txn.quantity
+    # Render Multiple Line Items Dynamically
+    y_pos = 535
+    for idx, t in enumerate(txns, start=1):
+        prod = t.product
+        item_total = t.unit_price * t.quantity
         c.setFont("Helvetica", 8)
-        c.drawString(35, 535, "1")
-        c.drawString(60, 535, prod.name)
-        c.drawString(280, 535, prod.hsn_code)
-        c.drawString(350, 535, f"{txn.quantity} NOS")
-        c.drawString(420, 535, f"{sym}{txn.unit_price:.2f}")
-        c.drawString(500, 535, f"{sym}{subtotal:.2f}")
+        c.drawString(35, y_pos, str(idx))
+        c.drawString(60, y_pos, prod.name if prod else "Item")
+        c.drawString(280, y_pos, prod.hsn_code if prod else "-")
+        c.drawString(350, y_pos, f"{t.quantity} NOS")
+        c.drawString(420, y_pos, f"{sym}{t.unit_price:.2f}")
+        c.drawString(500, y_pos, f"{sym}{item_total:.2f}")
+        y_pos -= 15
 
+    # Totals Section
     c.line(30, 250, 580, 250)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(350, 235, "Total Taxable:")
